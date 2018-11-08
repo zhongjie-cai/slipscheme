@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.0.3 - 2018-11-08
+
+* Fix title logic and remove root reference [zhongjiec] [[3c12ffa](https://github.com/coryb/slipscheme/commit/3c12ffa)]
+* Basic reference logic added [zhongjiec] [[b33608e](https://github.com/coryb/slipscheme/commit/b33608e)]
+* add comment for golint [Cory Bennett] [[fe9b04e](https://github.com/coryb/slipscheme/commit/fe9b04e)]
+* tweak struct naming for arrays [Cory Bennett] [[045a78f](https://github.com/coryb/slipscheme/commit/045a78f)]
+* if file argument is "-" then read from stdin [Cory Bennett] [[b582d9a](https://github.com/coryb/slipscheme/commit/b582d9a)]
+* print usage on no arguments [Cory Bennett] [[20ca3a3](https://github.com/coryb/slipscheme/commit/20ca3a3)]
+* add flag to enable/disable comment generation [Cory Bennett] [[f6fa191](https://github.com/coryb/slipscheme/commit/f6fa191)]
+* print comments for each type we write so golint will pass on the generated files [Cory Bennett] [[d9e2ce9](https://github.com/coryb/slipscheme/commit/d9e2ce9)]
+* fix golint errors [Cory Bennett] [[5c13244](https://github.com/coryb/slipscheme/commit/5c13244)]
+
 ## 0.0.2 - 2016-08-07
 
 * tweak header on printed documents [Cory Bennett] [[a09a964](https://github.com/coryb/slipscheme/commit/a09a964)]
