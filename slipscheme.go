@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -27,15 +29,14 @@ type Schema struct {
 	Root              *Schema            `json:"-"`
 }
 
+var anonymousObjectCount = 0
+
 // Name will attempt to determine the name of the Schema element using
-// the Title or ID or Description (in that order)
+// the Title or ID (in that order)
 func (s *Schema) Name() string {
 	name := s.Title
 	if name == "" {
 		name = s.ID
-	}
-	if name == "" {
-		return s.Description
 	}
 	return name
 }
@@ -110,8 +111,25 @@ func (s *SchemaType) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("Unknown Schema Type: %#v", s)
 }
 
+func getFileList(args []string) []string {
+	var fileList []string
+	for _, arg := range args {
+		var matches, err = filepath.Glob(arg)
+		if err != nil {
+			return fileList
+		}
+		fileList = append(fileList, matches...)
+	}
+	return fileList
+}
+
+func getReferenceName(file string) string {
+	_, name := path.Split(file)
+	return name
+}
+
 func main() {
-	outputDir := flag.String("dir", ".", "output directory for go files")
+	outputDir := flag.String("dir", "tmp", "output directory for go files")
 	pkgName := flag.String("pkg", "main", "package namespace for go files")
 	overwrite := flag.Bool("overwrite", false, "force overwriting existing go files")
 	stdout := flag.Bool("stdout", false, "print go code to stdout rather than files")
@@ -119,6 +137,10 @@ func main() {
 	comments := flag.Bool("comments", true, "enable/disable print comments")
 
 	flag.Parse()
+
+	if _, err := os.Stat(*outputDir); os.IsNotExist(err) {
+		os.MkdirAll(*outputDir, 0755)
+	}
 
 	processor := &SchemaProcessor{
 		OutputDir:   *outputDir,
@@ -135,7 +157,13 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-	err := processor.Process(args)
+	files := getFileList(args)
+	err := processor.Load(files)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		os.Exit(1)
+	}
+	err = processor.Process()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
@@ -150,35 +178,54 @@ type SchemaProcessor struct {
 	Stdout      bool
 	Fmt         bool
 	Comment     bool
+	schemas     map[string]*Schema
 	processed   map[string]bool
 }
 
-// Process will read a list of json schema files, parse them
-// and write them to the OutputDir
-func (s *SchemaProcessor) Process(files []string) error {
+// Load will read a list of json schema files and concert to schema objects
+func (s *SchemaProcessor) Load(files []string) error {
+	s.schemas = make(map[string]*Schema)
 	for _, file := range files {
 		var fh *os.File
-		if file == "-" {
-			fh = os.Stdin
-		} else {
-			var err error
-			fh, err = os.OpenFile(file, os.O_RDONLY, 0644)
-			defer fh.Close()
-			if err != nil {
-				return err
-			}
+		var err error
+		fh, err = os.OpenFile(file, os.O_RDONLY, 0644)
+		defer fh.Close()
+		if err != nil {
+			return err
 		}
 		b, err := ioutil.ReadAll(fh)
 		if err != nil {
 			return err
 		}
 
-		schema, err := s.ParseSchema(b)
+		reference := getReferenceName(file)
+		schema, err := s.LoadSchema(b, reference)
 		if err != nil {
 			return err
 		}
 
-		_, err = s.processSchema(schema)
+		s.schemas[reference] = schema
+	}
+	return nil
+}
+
+// Process will read a list of json schema files, parse them
+// and write them to the OutputDir
+func (s *SchemaProcessor) Process() error {
+	var targetSchemas []*Schema
+	for _, schema := range s.schemas {
+		// jsonContent, _ := json.Marshal(schema)
+		// fmt.Println(string(jsonContent))
+		targetSchema, err := s.ParseSchema(schema)
+		if err != nil {
+			return err
+		}
+		jsonContent, _ := json.Marshal(targetSchema)
+		fmt.Println(string(jsonContent))
+		targetSchemas = append(targetSchemas, targetSchema)
+	}
+	for _, targetSchema := range targetSchemas {
+		_, err := s.processSchema(targetSchema)
 		if err != nil {
 			return err
 		}
@@ -186,45 +233,67 @@ func (s *SchemaProcessor) Process(files []string) error {
 	return nil
 }
 
-// ParseSchema simply parses the schema and post-processes the objects
-// so each knows the Root object and also resolve/flatten any $ref objects
-// found in the document.
-func (s *SchemaProcessor) ParseSchema(data []byte) (*Schema, error) {
+func updateReferencePath(schema *Schema, reference string) {
+	if schema.Definitions != nil {
+		for _, v := range schema.Definitions {
+			updateReferencePath(v, reference)
+		}
+	}
+	if schema.Properties != nil {
+		for _, v := range schema.Properties {
+			updateReferencePath(v, reference)
+		}
+	}
+	if schema.PatternProperties != nil {
+		for _, v := range schema.PatternProperties {
+			updateReferencePath(v, reference)
+		}
+	}
+	if schema.Items != nil {
+		updateReferencePath(schema.Items, reference)
+	}
+	if schema.Ref != "" {
+		schemaPath := strings.Split(schema.Ref, "/")
+		if len(schemaPath) > 0 && schemaPath[0] == "#" {
+			schema.Ref = reference + schema.Ref
+		}
+	}
+}
+
+// LoadSchema simply loads the schema.
+func (s *SchemaProcessor) LoadSchema(data []byte, reference string) (*Schema, error) {
 	schema := &Schema{}
 	err := json.Unmarshal(data, schema)
 	if err != nil {
 		return nil, err
 	}
-	setRoot(schema, schema)
+	updateReferencePath(schema, reference)
 	return schema, nil
 }
 
-func setRoot(root, schema *Schema) {
-	schema.Root = root
-	if schema.Properties != nil {
-		for k, v := range schema.Properties {
-			setRoot(root, v)
-			if v.Name() == "" {
-				v.Title = k
-			}
-		}
-	}
-	if schema.PatternProperties != nil {
-		for _, v := range schema.PatternProperties {
-			setRoot(root, v)
-		}
-	}
-	if schema.Items != nil {
-		setRoot(root, schema.Items)
-	}
+// ParseSchema post-processes the objects
+// so each knows the Root object and also resolve/flatten any $ref objects
+// found in the document.
+func (s *SchemaProcessor) ParseSchema(schema *Schema) (*Schema, error) {
+	s.setRoot(schema, schema)
+	return schema, nil
+}
 
+func (s *SchemaProcessor) resolveRefs(schema *Schema) {
 	if schema.Ref != "" {
 		schemaPath := strings.Split(schema.Ref, "/")
 		var ctx interface{}
 		ctx = schema
 		for _, part := range schemaPath {
 			if part == "#" {
-				ctx = root
+				panic(errors.New("Invalid reference point"))
+			} else if strings.HasSuffix(part, "#") {
+				var referenceFile = part[:len(part)-1]
+				var referenceSchema, found = s.schemas[referenceFile]
+				if !found {
+					panic(errors.New("Invalid reference file"))
+				}
+				ctx = referenceSchema
 			} else if part == "definitions" {
 				ctx = ctx.(*Schema).Definitions
 			} else if part == "properties" {
@@ -242,6 +311,129 @@ func setRoot(root, schema *Schema) {
 		if cast, ok := ctx.(*Schema); ok {
 			*schema = *cast
 		}
+		s.resolveRefs(schema)
+	}
+
+	if schema.Definitions != nil {
+		for _, v := range schema.Definitions {
+			s.resolveRefs(v)
+		}
+	}
+	if schema.Properties != nil {
+		for _, v := range schema.Properties {
+			s.resolveRefs(v)
+		}
+	}
+	if schema.PatternProperties != nil {
+		for _, v := range schema.PatternProperties {
+			s.resolveRefs(v)
+		}
+	}
+	if schema.Items != nil {
+		s.resolveRefs(schema.Items)
+	}
+}
+
+func (s *SchemaProcessor) setTitle(schema *Schema) {
+	if schema.Definitions != nil {
+		for k, v := range schema.Definitions {
+			if v.Name() == "" {
+				v.Title = k
+			}
+			s.setTitle(v)
+		}
+	}
+	if schema.Properties != nil {
+		for _, v := range schema.Properties {
+			// if v.Name() == "" {
+			// 	v.Title = k
+			// }
+			s.setTitle(v)
+		}
+	}
+	if schema.PatternProperties != nil {
+		for _, v := range schema.PatternProperties {
+			s.setTitle(v)
+		}
+	}
+	if schema.Items != nil {
+		// if schema.Items.Name() == "" {
+		// 	if schema.Name() == "" {
+		// 		anonymousObjectCount++
+		// 		schema.Title = fmt.Sprintf("AnonymousObject%v", anonymousObjectCount)
+		// 	}
+		// 	schema.Items.Title = schema.Name() + "Item"
+		// }
+		s.setTitle(schema.Items)
+	}
+}
+
+func (s *SchemaProcessor) setRoot(root, schema *Schema) {
+	schema.Root = root
+	if schema.Definitions != nil {
+		for k, v := range schema.Definitions {
+			if v.Name() == "" {
+				v.Title = k
+			}
+			s.setRoot(root, v)
+		}
+	}
+	if schema.Properties != nil {
+		for _, v := range schema.Properties {
+			// if v.Name() == "" {
+			// 	v.Title = k
+			// }
+			s.setRoot(root, v)
+		}
+	}
+	if schema.PatternProperties != nil {
+		for _, v := range schema.PatternProperties {
+			s.setRoot(root, v)
+		}
+	}
+	if schema.Items != nil {
+		// if schema.Items.Name() == "" {
+		// 	if schema.Name() == "" {
+		// 		anonymousObjectCount++
+		// 		schema.Title = fmt.Sprintf("AnonymousObject%v", anonymousObjectCount)
+		// 	}
+		// 	schema.Items.Title = schema.Name() + "Item"
+		// }
+		s.setRoot(root, schema.Items)
+	}
+
+	if schema.Ref != "" {
+		schemaPath := strings.Split(schema.Ref, "/")
+		var ctx interface{}
+		ctx = schema
+		for _, part := range schemaPath {
+			if part == "#" {
+				ctx = root
+			} else if strings.HasSuffix(part, "#") {
+				var referenceFile = part[:len(part)-1]
+				var referenceSchema, found = s.schemas[referenceFile]
+				if !found {
+					panic(errors.New("Invalid reference file"))
+				}
+				ctx = referenceSchema
+			} else if part == "definitions" {
+				ctx = ctx.(*Schema).Definitions
+			} else if part == "properties" {
+				ctx = ctx.(*Schema).Properties
+			} else if part == "patternProperties" {
+				ctx = ctx.(*Schema).PatternProperties
+			} else if part == "items" {
+				ctx = ctx.(*Schema).Items
+			} else {
+				if cast, ok := ctx.(map[string]*Schema); ok {
+					ctx = cast[part]
+				}
+			}
+		}
+		if cast, ok := ctx.(*Schema); ok {
+			*schema = *cast
+		}
+		s.setRoot(root, schema)
 	}
 }
 

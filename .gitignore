@@ -5,3 +5,7 @@ go*.tar.gz
 bin
 pkg
 src
+.vscode/launch.json
+latest/
+test/
+tmp/
