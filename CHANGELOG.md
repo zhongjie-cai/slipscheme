@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.4 - 2018-11-08
+
+* Clean up codebase [zhongjiec] [[80b3e57](https://github.com/coryb/slipscheme/commit/80b3e57)]
+
 ## 0.0.3 - 2018-11-08
 
 * Fix title logic and remove root reference [zhongjiec] [[3c12ffa](https://github.com/coryb/slipscheme/commit/3c12ffa)]
