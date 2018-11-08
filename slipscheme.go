@@ -128,9 +128,9 @@ func getReferenceName(file string) string {
 }
 
 func main() {
-	outputDir := flag.String("dir", "tmp", "output directory for go files")
-	pkgName := flag.String("pkg", "main", "package namespace for go files")
-	overwrite := flag.Bool("overwrite", false, "force overwriting existing go files")
+	outputDir := flag.String("dir", "tmp", "output directory for go files.")
+	pkgName := flag.String("pkg", "model", "package namespace for go files")
+	overwrite := flag.Bool("overwrite", true, "force overwriting existing go files")
 	stdout := flag.Bool("stdout", false, "print go code to stdout rather than files")
 	format := flag.Bool("fmt", true, "pass code through gofmt")
 	comments := flag.Bool("comments", true, "enable/disable print comments")
@@ -213,14 +213,10 @@ func (s *SchemaProcessor) Load(files []string) error {
 func (s *SchemaProcessor) Process() error {
 	var targetSchemas []*Schema
 	for _, schema := range s.schemas {
-		// jsonContent, _ := json.Marshal(schema)
-		// fmt.Println(string(jsonContent))
 		targetSchema, err := s.ParseSchema(schema)
 		if err != nil {
 			return err
 		}
-		jsonContent, _ := json.Marshal(targetSchema)
-		fmt.Println(string(jsonContent))
 		targetSchemas = append(targetSchemas, targetSchema)
 	}
 	for _, targetSchema := range targetSchemas {
@@ -274,24 +270,27 @@ func (s *SchemaProcessor) LoadSchema(data []byte, reference string) (*Schema, er
 // so as to resolve/flatten any $ref objects
 // found in the document.
 func (s *SchemaProcessor) ParseSchema(schema *Schema) (*Schema, error) {
-	s.resolveRefs(schema)
+	err := s.resolveRefs(schema)
+	if err != nil {
+		return nil, err
+	}
 	s.setTitle(schema)
 	return schema, nil
 }
 
-func (s *SchemaProcessor) resolveRefs(schema *Schema) {
+func (s *SchemaProcessor) resolveRefs(schema *Schema) error {
 	if schema.Ref != "" {
 		schemaPath := strings.Split(schema.Ref, "/")
 		var ctx interface{}
 		ctx = schema
 		for _, part := range schemaPath {
 			if part == "#" {
-				panic(errors.New("Invalid reference point"))
+				return errors.New("Invalid reference point - please make sure references have file names specified")
 			} else if strings.HasSuffix(part, "#") {
 				var referenceFile = part[:len(part)-1]
 				var referenceSchema, found = s.schemas[referenceFile]
 				if !found {
-					panic(errors.New("Invalid reference file"))
+					return errors.New("Invalid reference file - please make sure the referenced files are in the processing list")
 				}
 				ctx = referenceSchema
 			} else if part == "definitions" {
@@ -311,7 +310,10 @@ func (s *SchemaProcessor) resolveRefs(schema *Schema) {
 		if cast, ok := ctx.(*Schema); ok {
 			*schema = *cast
 		}
-		s.resolveRefs(schema)
+		err := s.resolveRefs(schema)
+		if err != nil {
+			return err
+		}
 	}
 
 	if schema.Definitions != nil {
@@ -319,22 +321,35 @@ func (s *SchemaProcessor) resolveRefs(schema *Schema) {
 			if v.Name() == "" {
 				v.Title = k
 			}
-			s.resolveRefs(v)
+			err := s.resolveRefs(v)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	if schema.Properties != nil {
 		for _, v := range schema.Properties {
-			s.resolveRefs(v)
+			err := s.resolveRefs(v)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	if schema.PatternProperties != nil {
 		for _, v := range schema.PatternProperties {
-			s.resolveRefs(v)
+			err := s.resolveRefs(v)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	if schema.Items != nil {
-		s.resolveRefs(schema.Items)
+		err := s.resolveRefs(schema.Items)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (s *SchemaProcessor) setTitle(schema *Schema) {
