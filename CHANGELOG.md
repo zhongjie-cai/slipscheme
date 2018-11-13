@@ -2,6 +2,7 @@
 
 ## 0.0.5 - 2018-11-13
 
+* Remove debug prints [zhongjiec] [[331d946](https://github.com/coryb/slipscheme/commit/331d946)]
 * Fix issues with definition titles [zhongjiec] [[3a3aeb7](https://github.com/coryb/slipscheme/commit/3a3aeb7)]
 
 ## 0.0.4 - 2018-11-08
