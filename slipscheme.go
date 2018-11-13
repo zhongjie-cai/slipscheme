@@ -212,7 +212,6 @@ func (s *SchemaProcessor) Load(files []string) error {
 		}
 
 		s.schemas[reference] = schema
-		fmt.Printf("Loaded %v:%v from %v\n", reference, schema.Title, file)
 	}
 	return nil
 }
