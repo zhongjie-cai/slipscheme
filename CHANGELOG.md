@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.5 - 2018-11-13
+
+* Fix issues with definition titles [zhongjiec] [[3a3aeb7](https://github.com/coryb/slipscheme/commit/3a3aeb7)]
+
 ## 0.0.4 - 2018-11-08
 
 * Clean up codebase [zhongjiec] [[80b3e57](https://github.com/coryb/slipscheme/commit/80b3e57)]
