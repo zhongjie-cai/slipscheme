@@ -28,14 +28,22 @@ type Schema struct {
 	Items             *Schema            `json:"items,omitempty"`
 }
 
+func (schema *Schema) String() string {
+	var bytes, err = json.Marshal(schema)
+	if err != nil {
+		return ""
+	}
+	return string(bytes)
+}
+
 var anonymousObjectCount = 0
 
 // Name will attempt to determine the name of the Schema element using
 // the Title or ID (in that order)
-func (s *Schema) Name() string {
-	name := s.Title
+func (schema *Schema) Name() string {
+	name := schema.Title
 	if name == "" {
-		name = s.ID
+		name = schema.ID
 	}
 	return name
 }
@@ -204,6 +212,7 @@ func (s *SchemaProcessor) Load(files []string) error {
 		}
 
 		s.schemas[reference] = schema
+		fmt.Printf("Loaded %v:%v from %v\n", reference, schema.Title, file)
 	}
 	return nil
 }
@@ -212,8 +221,8 @@ func (s *SchemaProcessor) Load(files []string) error {
 // and write them to the OutputDir
 func (s *SchemaProcessor) Process() error {
 	var targetSchemas []*Schema
-	for _, schema := range s.schemas {
-		targetSchema, err := s.ParseSchema(schema)
+	for key, schema := range s.schemas {
+		targetSchema, err := s.ParseSchema(key, schema)
 		if err != nil {
 			return err
 		}
@@ -226,6 +235,17 @@ func (s *SchemaProcessor) Process() error {
 		}
 	}
 	return nil
+}
+
+func updateDefinitionTitles(schema *Schema) {
+	if schema.Definitions != nil {
+		for k, v := range schema.Definitions {
+			if v.Name() == "" {
+				v.Title = k
+			}
+			updateDefinitionTitles(v)
+		}
+	}
 }
 
 func updateReferencePath(schema *Schema, reference string) {
@@ -262,6 +282,7 @@ func (s *SchemaProcessor) LoadSchema(data []byte, reference string) (*Schema, er
 	if err != nil {
 		return nil, err
 	}
+	updateDefinitionTitles(schema)
 	updateReferencePath(schema, reference)
 	return schema, nil
 }
@@ -269,28 +290,28 @@ func (s *SchemaProcessor) LoadSchema(data []byte, reference string) (*Schema, er
 // ParseSchema post-processes the objects
 // so as to resolve/flatten any $ref objects
 // found in the document.
-func (s *SchemaProcessor) ParseSchema(schema *Schema) (*Schema, error) {
-	err := s.resolveRefs(schema)
+func (s *SchemaProcessor) ParseSchema(reference string, schema *Schema) (*Schema, error) {
+	err := s.resolveRefs(reference, schema)
 	if err != nil {
 		return nil, err
 	}
-	s.setTitle(schema)
+	s.setTitle(reference, schema)
 	return schema, nil
 }
 
-func (s *SchemaProcessor) resolveRefs(schema *Schema) error {
+func (s *SchemaProcessor) resolveRefs(reference string, schema *Schema) error {
 	if schema.Ref != "" {
 		schemaPath := strings.Split(schema.Ref, "/")
 		var ctx interface{}
 		ctx = schema
 		for _, part := range schemaPath {
 			if part == "#" {
-				return errors.New("Invalid reference point - please make sure references have file names specified")
+				return errors.New("Invalid reference point - please make sure references have file names specified - " + reference)
 			} else if strings.HasSuffix(part, "#") {
-				var referenceFile = part[:len(part)-1]
-				var referenceSchema, found = s.schemas[referenceFile]
+				var referenceName = part[:len(part)-1]
+				var referenceSchema, found = s.schemas[referenceName]
 				if !found {
-					return errors.New("Invalid reference file - please make sure the referenced files are in the processing list")
+					return errors.New("Invalid reference file - please make sure the referenced files are in the processing list - " + reference + " ? " + referenceName)
 				}
 				ctx = referenceSchema
 			} else if part == "definitions" {
@@ -310,18 +331,15 @@ func (s *SchemaProcessor) resolveRefs(schema *Schema) error {
 		if cast, ok := ctx.(*Schema); ok {
 			*schema = *cast
 		}
-		err := s.resolveRefs(schema)
+		err := s.resolveRefs(reference, schema)
 		if err != nil {
 			return err
 		}
 	}
 
 	if schema.Definitions != nil {
-		for k, v := range schema.Definitions {
-			if v.Name() == "" {
-				v.Title = k
-			}
-			err := s.resolveRefs(v)
+		for _, v := range schema.Definitions {
+			err := s.resolveRefs(reference, v)
 			if err != nil {
 				return err
 			}
@@ -329,7 +347,7 @@ func (s *SchemaProcessor) resolveRefs(schema *Schema) error {
 	}
 	if schema.Properties != nil {
 		for _, v := range schema.Properties {
-			err := s.resolveRefs(v)
+			err := s.resolveRefs(reference, v)
 			if err != nil {
 				return err
 			}
@@ -337,14 +355,14 @@ func (s *SchemaProcessor) resolveRefs(schema *Schema) error {
 	}
 	if schema.PatternProperties != nil {
 		for _, v := range schema.PatternProperties {
-			err := s.resolveRefs(v)
+			err := s.resolveRefs(reference, v)
 			if err != nil {
 				return err
 			}
 		}
 	}
 	if schema.Items != nil {
-		err := s.resolveRefs(schema.Items)
+		err := s.resolveRefs(reference, schema.Items)
 		if err != nil {
 			return err
 		}
@@ -352,13 +370,13 @@ func (s *SchemaProcessor) resolveRefs(schema *Schema) error {
 	return nil
 }
 
-func (s *SchemaProcessor) setTitle(schema *Schema) {
+func (s *SchemaProcessor) setTitle(reference string, schema *Schema) {
 	if schema.Definitions != nil {
 		for k, v := range schema.Definitions {
 			if v.Name() == "" {
 				v.Title = k
 			}
-			s.setTitle(v)
+			s.setTitle(reference, v)
 		}
 	}
 	if schema.Properties != nil {
@@ -366,7 +384,7 @@ func (s *SchemaProcessor) setTitle(schema *Schema) {
 			if v.Name() == "" {
 				v.Title = k
 			}
-			s.setTitle(v)
+			s.setTitle(reference, v)
 		}
 	}
 	if schema.PatternProperties != nil {
@@ -374,7 +392,7 @@ func (s *SchemaProcessor) setTitle(schema *Schema) {
 			if v.Name() == "" {
 				v.Title = k
 			}
-			s.setTitle(v)
+			s.setTitle(reference, v)
 		}
 	}
 	if schema.Items != nil {
@@ -385,7 +403,7 @@ func (s *SchemaProcessor) setTitle(schema *Schema) {
 			}
 			schema.Items.Title = schema.Name() + "Item"
 		}
-		s.setTitle(schema.Items)
+		s.setTitle(reference, schema.Items)
 	}
 }
 
