@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.6 - 2018-11-14
+
+* Add file name for comments and removed command output [zhongjiec] [[18ed9d4](https://github.com/coryb/slipscheme/commit/18ed9d4)]
+
 ## 0.0.5 - 2018-11-13
 
 * Remove debug prints [zhongjiec] [[331d946](https://github.com/coryb/slipscheme/commit/331d946)]
