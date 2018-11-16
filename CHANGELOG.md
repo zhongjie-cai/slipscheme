@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.7 - 2018-11-16
+
+* Add logic to fix ref path if no "#" is found [zhongjiec] [[0e33a99](https://github.com/coryb/slipscheme/commit/0e33a99)]
+
 ## 0.0.6 - 2018-11-14
 
 * Add file name for comments and removed command output [zhongjiec] [[18ed9d4](https://github.com/coryb/slipscheme/commit/18ed9d4)]
