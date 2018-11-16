@@ -270,8 +270,13 @@ func updateReferencePath(schema *Schema, reference string) {
 	}
 	if schema.Ref != "" {
 		schemaPath := strings.Split(schema.Ref, "/")
-		if len(schemaPath) > 0 && schemaPath[0] == "#" {
-			schema.Ref = reference + schema.Ref
+		if len(schemaPath) > 0 {
+			if schemaPath[0] == "#" {
+				schema.Ref = reference + schema.Ref
+			} else if !strings.HasSuffix(schemaPath[0], "#") {
+				schemaPath[0] = schemaPath[0] + "#"
+				schema.Ref = strings.Join(schemaPath, "/")
+			}
 		}
 	}
 }
