@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.8 - 2019-01-25
+
+* Add prefix to type names using file name [zhongjiec] [[2de4eca](https://github.com/coryb/slipscheme/commit/2de4eca)]
+
 ## 0.0.7 - 2018-11-16
 
 * Add logic to fix ref path if no "#" is found [zhongjiec] [[0e33a99](https://github.com/coryb/slipscheme/commit/0e33a99)]
