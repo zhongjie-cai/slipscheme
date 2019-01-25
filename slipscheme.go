@@ -26,7 +26,7 @@ type Schema struct {
 	PatternProperties map[string]*Schema `json:"patternProperties,omitempty"`
 	Ref               string             `json:"$ref,omitempty"`
 	Items             *Schema            `json:"items,omitempty"`
-	File              string             `json:"-"`
+	File              string             `json:"file,omitempty"`
 }
 
 func (schema *Schema) String() string {
@@ -439,6 +439,14 @@ func camelCase(name string) string {
 	return caseName
 }
 
+func getPrefixedTypeName(file string, name string) string {
+	var result = camelCase(name)
+	if file != "" {
+		result = camelCase(file) + "_" + result
+	}
+	return result
+}
+
 func (s *SchemaProcessor) structComment(schema *Schema, typeName string) string {
 	if !s.Comment {
 		return fmt.Sprintf("// %s defined from schema [%v].\n", typeName, schema.File)
@@ -449,7 +457,7 @@ func (s *SchemaProcessor) structComment(schema *Schema, typeName string) string 
 
 func (s *SchemaProcessor) processSchema(schema *Schema) (typeName string, err error) {
 	if schema.Type == OBJECT {
-		typeName = camelCase(schema.Name())
+		typeName = getPrefixedTypeName(schema.File, schema.Name())
 		if schema.Properties != nil {
 			typeData := fmt.Sprintf("%stype %s struct {\n", s.structComment(schema, typeName), typeName)
 			keys := []string{}
@@ -503,7 +511,7 @@ func (s *SchemaProcessor) processSchema(schema *Schema) (typeName string, err er
 			return "", err
 		}
 
-		typeName = camelCase(schema.Name())
+		typeName = getPrefixedTypeName(schema.File, schema.Name())
 		if typeName == "" {
 			if strings.Title(subTypeName) == subTypeName {
 				if strings.HasSuffix(subTypeName, "s") {
