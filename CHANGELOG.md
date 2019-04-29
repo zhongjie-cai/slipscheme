@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.9 - 2019-04-29
+
+* Add panic handling on missing references [zhongjiec] [[5c651a2](https://github.com/coryb/slipscheme/commit/5c651a2)]
+
 ## 0.0.8 - 2019-01-25
 
 * Add prefix to type names using file name [zhongjiec] [[2de4eca](https://github.com/coryb/slipscheme/commit/2de4eca)]
