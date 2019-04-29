@@ -330,11 +330,17 @@ func (s *SchemaProcessor) resolveRefs(reference string, schema *Schema) error {
 				ctx = ctx.(*Schema).Items
 			} else {
 				if cast, ok := ctx.(map[string]*Schema); ok {
+					if cast == nil {
+						return errors.New("Invalid reference - please make sure the referenced objects are in the processing list - " + reference + " ? " + schema.Ref)
+					}
 					ctx = cast[part]
 				}
 			}
 		}
 		if cast, ok := ctx.(*Schema); ok {
+			if cast == nil {
+				return errors.New("Invalid reference - please make sure the referenced objects are in the processing list - " + reference + " ? " + schema.Ref)
+			}
 			*schema = *cast
 		}
 		err := s.resolveRefs(reference, schema)
